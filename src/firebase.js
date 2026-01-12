@@ -7,7 +7,7 @@ import { getFirestore } from "firebase/firestore";
 // Project Settings -> General -> Your Apps -> Firebase SDK snippet -> Config
 const firebaseConfig = {
   apiKey: "AIzaSyCSiQIG-P_KOVA8POiADX-3Aq6RMiirGW0",
-  authDomain: "salpointe-lens-signing.firebaseapp.com",
+  authDomain: "salpointe-lens-signing.web.app",
   projectId: "salpointe-lens-signing",
   storageBucket: "salpointe-lens-signing.firebasestorage.app",
   messagingSenderId: "44266083964",
