@@ -2,19 +2,52 @@ import React, { useState, useEffect } from 'react';
 import { db, auth } from './firebase';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  doc, setDoc, getDoc, collection, query, where, getDocs, onSnapshot 
+  doc, setDoc, getDoc, deleteDoc, collection, query, where, getDocs, onSnapshot 
 } from 'firebase/firestore';
 import { 
   GoogleAuthProvider, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut 
 } from 'firebase/auth';
 import { 
   Calendar, Clock, User, CheckCircle2, LogOut, Camera, 
-  AlertTriangle, Users, Sparkles, ChevronDown, CameraIcon, Smartphone
+  AlertTriangle, Users, Sparkles, ChevronDown, 
+  Smartphone, ShieldCheck, Mail, Trash2, PlusCircle, SmartphoneIcon, CameraIcon, Info
 } from 'lucide-react';
+
+// --- CONFIGURATION ---
+const ADMIN_EMAILS = ['26mpost@salpointe.org', 'erivers@salpointe.org'];
+const CLASS_YEAR = "2026";
+const PROJECT_LEAD = "Michaela Post '26";
+const LEAD_TITLE = "Head Photographer";
+const GOLD = "#FFCC00"; 
+const MAROON = "#800000";
+
+// --- UTILITY: CALENDAR LINK GENERATOR ---
+const generateCalLink = (app, choiceNum) => {
+  const event = choiceNum === 1 ? app.choice1Event : app.choice2Event;
+  const date = choiceNum === 1 ? app.choice1Date : app.choice2Date;
+  const time = choiceNum === 1 ? app.choice1Time : app.choice2Time;
+  if (!date || !time) return "#";
+  const startStr = `${date.replace(/-/g, '')}T${time.replace(':', '')}00`;
+  const endHour = (parseInt(time.split(':')[0]) + 1).toString().padStart(2, '0');
+  const endStr = `${date.replace(/-/g, '')}T${endHour}${time.split(':')[1]}00`;
+  const title = encodeURIComponent(`[LENS] ${app.name}`);
+  const details = encodeURIComponent(`Senior: ${app.name}\nContact: ${app.contact}\nChoice #${choiceNum}: ${event}`);
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startStr}/${endStr}&details=${details}&location=${encodeURIComponent(event)}`;
+};
+
+const getIcsLink = (app) => {
+  const startStr = `${app.choice1Date.replace(/-/g, '')}T${app.choice1Time.replace(':', '')}00`;
+  const endHour = (parseInt(app.choice1Time.split(':')[0]) + 1).toString().padStart(2, '0');
+  const endStr = `${app.choice1Date.replace(/-/g, '')}T${endHour}${app.choice1Time.split(':')[1]}00`;
+  const icsContent = `BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nDTSTART:${startStr}\nDTEND:${endStr}\nSUMMARY:Lens Signing: ${app.name}\nLOCATION:${app.choice1Event}\nEND:VEVENT\nEND:VCALENDAR`;
+  return `data:text/calendar;charset=utf-8,${encodeURIComponent(icsContent)}`;
+};
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [view, setView] = useState('form'); 
+  const [isMsgExpanded, setIsMsgExpanded] = useState(false);
   const [formData, setFormData] = useState({
     name: '', contact: '',
     choice1Event: '', choice1Date: '', choice1Time: '',
@@ -23,15 +56,13 @@ export default function App() {
   const [appointments, setAppointments] = useState([]);
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [deleteId, setDeleteId] = useState(null);
+
+  const isAdmin = user && ADMIN_EMAILS.includes(user.email);
 
   useEffect(() => {
     let isMounted = true;
-    
-    // Handle redirect result
-    getRedirectResult(auth).then((result) => {
-      if (result?.user && isMounted) fetchUserRecord(result.user.uid);
-    }).catch(() => setError("Login failed. Open in Safari/Chrome."));
-
+    getRedirectResult(auth).catch(() => setError("Login failed. Open in Safari or Chrome directly."));
     const unsubAuth = onAuthStateChanged(auth, (u) => {
       if (isMounted) {
         setUser(u);
@@ -39,15 +70,12 @@ export default function App() {
         setLoading(false);
       }
     });
-
-    const q = collection(db, "appointments");
-    const unsubSnap = onSnapshot(q, (snap) => {
+    const unsubSnap = onSnapshot(collection(db, "appointments"), (snap) => {
       if (isMounted) {
-        const data = snap.docs.map(doc => doc.data());
+        const data = snap.docs.map(doc => ({ ...doc.data(), id: doc.id }));
         setAppointments(data.sort((a, b) => new Date(a.choice1Date) - new Date(b.choice1Date)));
       }
     });
-
     return () => { isMounted = false; unsubAuth(); unsubSnap(); };
   }, []);
 
@@ -63,255 +91,263 @@ export default function App() {
     signInWithRedirect(auth, provider);
   };
   
+  const handleLogout = () => signOut(auth);
+
+  const handleDelete = async () => {
+    try {
+      await deleteDoc(doc(db, "appointments", deleteId));
+      setDeleteId(null);
+    } catch (err) { setError("Delete failed."); }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setIsSaving(true);
     try {
-      const q = query(collection(db, "appointments"), 
-        where("choice1Event", "==", formData.choice1Event),
-        where("choice1Date", "==", formData.choice1Date));
-      const snapshot = await getDocs(q);
-      const others = snapshot.docs.filter(d => d.id !== user.uid);
+      const q = query(collection(db, "appointments"), where("choice1Event", "==", formData.choice1Event), where("choice1Date", "==", formData.choice1Date));
+      const snap = await getDocs(q);
+      const others = snap.docs.filter(d => d.id !== user.uid);
       if (others.length >= 6) {
-        setError(`Choice #1 is full! Pick another date or event.`);
+        setError(`Choice #1 is full! That event already has 6 seniors signed up.`);
         setIsSaving(false); return;
       }
-      await setDoc(doc(db, "appointments", user.uid), {
-        ...formData, userId: user.uid, updatedAt: new Date().toISOString()
-      });
-      alert("📸 Captured! Your spot is reserved.");
-    } catch (err) { 
-      setError("Save failed. Try again."); 
-    } finally { 
-      setIsSaving(false); 
-    }
+      await setDoc(doc(db, "appointments", user.uid), { ...formData, userId: user.uid, updatedAt: new Date().toISOString() });
+      alert("📸 Spot Reserved!");
+    } catch (err) { setError("Save failed."); } finally { setIsSaving(false); }
   };
 
   if (loading) return (
     <div className="flex h-screen items-center justify-center bg-[#800000]">
-      <motion.div 
-        animate={{ scale: [1, 1.2, 1], rotate: [0, 90, 0] }}
-        transition={{ repeat: Infinity, duration: 2 }}
-        className="text-yellow-400"
-      >
+      <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 1 }} className="text-[#FFCC00]">
         <Camera size={64} />
       </motion.div>
     </div>
   );
 
   return (
-    <div className="max-w-md mx-auto min-h-screen bg-slate-950 text-white selection:bg-yellow-400 selection:text-maroon-900 overflow-x-hidden">
+    <div className="min-h-screen bg-slate-950 text-white pb-20 overflow-x-hidden selection:bg-[#FFCC00] selection:text-[#800000]">
       
-      {/* HERO / LANDING SECTION */}
-      <section className={`relative transition-all duration-1000 flex flex-col items-center justify-center px-6 overflow-hidden ${user ? 'h-[40vh]' : 'h-screen'}`}>
-        
-        {/* Background Visuals */}
-        <div className="absolute inset-0 bg-gradient-to-b from-[#800000]/30 to-transparent z-0" />
-        <motion.div 
-          animate={{ opacity: [0.1, 0.2, 0.1] }}
-          transition={{ repeat: Infinity, duration: 5 }}
-          className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] z-10"
-        />
-        <div className="absolute top-[-10%] left-[-10%] w-72 h-72 bg-[#800000] rounded-full blur-[120px] opacity-40" />
-
-        <div className="relative z-20 flex flex-col items-center text-center">
-          <motion.div 
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ type: "spring", bounce: 0.5 }}
-            className="bg-yellow-400 p-5 rounded-[2.5rem] text-maroon-900 mb-6 shadow-2xl"
-          >
-            <CameraIcon size={42} strokeWidth={2.5} />
+      {/* HERO SECTION */}
+      <section className={`relative transition-all duration-1000 flex flex-col items-center justify-center px-4 md:px-6 ${user ? 'min-h-[35vh] md:min-h-[45vh]' : 'h-screen'}`}>
+        <div className="absolute inset-0 bg-gradient-to-b from-[#800000]/60 to-transparent z-0" />
+        <div className="relative z-30 flex flex-col items-center text-center max-w-4xl w-full">
+          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="mb-4">
+             <img src="/sc-logo.png" alt="Salpointe Logo" className="w-20 h-20 md:w-28 md:h-28 object-contain drop-shadow-2xl" />
           </motion.div>
-
-          <motion.h1 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-6xl font-black italic tracking-tighter leading-[0.85]"
-          >
-            SIGN THE <br/>
-            <span className="text-yellow-400 not-italic">LENS.</span>
-          </motion.h1>
+          <h1 className="text-5xl md:text-7xl font-black italic tracking-tighter uppercase leading-[0.85] text-white">Sign The <br/><span className="text-[#FFCC00] not-italic font-bold">Lens.</span></h1>
           
-          <motion.p className="mt-4 text-slate-500 font-bold tracking-[0.3em] text-[10px] uppercase">
-            Salpointe Class of 2025
-          </motion.p>
+          {/* MICHAELA CREDIT BADGE */}
+          <div className="mt-4 bg-[#FFCC00] text-[#800000] px-4 py-1.5 rounded-full font-black text-[9px] md:text-xs uppercase tracking-widest shadow-lg flex items-center gap-2 border border-[#800000]/20">
+            <CameraIcon size={12} /> {PROJECT_LEAD} | {LEAD_TITLE}
+          </div>
 
-          <AnimatePresence>
-            {!user && (
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="mt-12 space-y-6 flex flex-col items-center"
-              >
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={handleLogin}
-                  className="relative z-30 bg-white text-slate-950 px-10 py-5 rounded-2xl font-black uppercase tracking-widest text-sm shadow-[0_20px_50px_rgba(255,255,255,0.1)] active:bg-yellow-400 transition-colors"
-                >
-                  Sign in with Google
-                </motion.button>
-                
-                <p className="flex items-center gap-2 text-slate-500 text-[9px] uppercase font-bold tracking-widest">
-                  <Smartphone size={12}/> Best in Safari or Chrome
-                </p>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {!user && (
+            <button onClick={handleLogin} className="mt-12 bg-[#FFCC00] text-[#800000] px-10 py-5 rounded-2xl font-black uppercase tracking-widest text-xs md:text-sm active:scale-95 transition-all shadow-[0_0_30px_rgba(255,204,0,0.5)]">
+              Sign in with Google
+            </button>
+          )}
+
+          {isAdmin && (
+            <button onClick={() => setView(view === 'admin' ? 'form' : 'admin')} className="mt-6 flex items-center gap-2 bg-[#FFCC00] text-[#800000] px-6 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest border-2 border-[#800000] shadow-lg active:scale-95 transition-transform">
+              <ShieldCheck size={16} /> {view === 'admin' ? 'Exit Admin' : 'Admin Dashboard'}
+            </button>
+          )}
         </div>
-
-        {user && (
-          <motion.div 
-            animate={{ y: [0, 10, 0] }}
-            transition={{ repeat: Infinity, duration: 2 }}
-            className="absolute bottom-6 z-20"
-          >
-            <ChevronDown className="text-yellow-400/50" />
-          </motion.div>
-        )}
       </section>
 
-      {/* CONTENT AREA (Only shows if logged in) */}
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {user && (
           <motion.main 
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="px-6 pb-20 space-y-12 relative z-20"
+            initial={{ opacity: 0, y: 30 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            className="px-4 md:px-6 mt-8 max-w-6xl mx-auto space-y-12 relative z-20"
           >
             
-            {/* INSTRUCTIONS */}
-            <motion.div className="bg-white/5 border border-white/10 p-7 rounded-[2.5rem] backdrop-blur-xl">
-              <h2 className="flex items-center gap-2 text-yellow-400 font-black uppercase text-[10px] tracking-widest mb-4">
-                <Sparkles size={14}/> Instruction Manual
-              </h2>
-              <p className="text-slate-400 text-xs leading-relaxed font-medium">
-                "Hey Seniors! Put two possible events you want me to attend. I'll be there to capture your lens signing forever. Make sure to check your schedules first!"
-              </p>
-            </motion.div>
-
-            {/* FORM */}
-            <motion.form 
-              onSubmit={handleSubmit} 
-              className="space-y-8"
-            >
-              <div className="space-y-4">
-                <label className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-600 ml-2">Contact Info</label>
-                <input 
-                  type="text" placeholder="First & Last Name" required
-                  className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl focus:ring-2 focus:ring-yellow-400 transition-all font-bold text-white placeholder:text-slate-700 shadow-inner" 
-                  value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
-                <input 
-                  type="text" placeholder="Phone or Email" required
-                  className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl focus:ring-2 focus:ring-yellow-400 transition-all font-bold text-white placeholder:text-slate-700 shadow-inner" 
-                  value={formData.contact} onChange={e => setFormData({...formData, contact: e.target.value})} />
-              </div>
-
-              {/* Choice 1 */}
-              <div className="space-y-4">
-                <div className="flex justify-between px-2 items-end">
-                  <label className="text-[10px] font-black uppercase tracking-[0.3em] text-green-500">Choice #1 (Primary)</label>
-                  <span className="text-[8px] font-black uppercase bg-green-500/10 text-green-500 px-2 py-1 rounded">Limit 6</span>
+            {view === 'admin' ? (
+              /* --- ADMIN MASTER LIST (Responsive Grid) --- */
+              <div className="space-y-8">
+                <div className="flex justify-between items-end border-b-2 border-[#FFCC00] pb-4 px-2">
+                  <h2 className="text-3xl md:text-5xl font-black italic uppercase text-[#FFCC00]">Master List</h2>
+                  <div className="bg-[#FFCC00] text-[#800000] px-3 py-1 rounded-lg text-xs font-black">{appointments.length} TOTAL</div>
                 </div>
-                <div className="bg-gradient-to-br from-white/10 to-transparent p-[1px] rounded-[2rem]">
-                  <div className="bg-slate-950 p-6 rounded-[2rem] space-y-4">
-                    <input 
-                      type="text" placeholder="Event Name" required
-                      className="w-full bg-white/5 border-none p-4 rounded-xl focus:ring-2 focus:ring-green-500 text-sm font-bold" 
-                      value={formData.choice1Event} onChange={e => setFormData({...formData, choice1Event: e.target.value})} />
-                    <div className="flex gap-2">
-                      <input type="date" required className="flex-1 bg-white/5 border-none p-4 rounded-xl text-xs font-bold" 
-                        value={formData.choice1Date} onChange={e => setFormData({...formData, choice1Date: e.target.value})} />
-                      <input type="time" required className="flex-1 bg-white/5 border-none p-4 rounded-xl text-xs font-bold" 
-                        value={formData.choice1Time} onChange={e => setFormData({...formData, choice1Time: e.target.value})} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Choice 2 */}
-              <div className="space-y-4 opacity-80">
-                <label className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-400 ml-2">Choice #2 (Backup)</label>
-                <div className="bg-white/5 p-6 rounded-[2rem] border border-white/5 space-y-4">
-                  <input 
-                    type="text" placeholder="Backup Event Name" required
-                    className="w-full bg-white/5 border-none p-4 rounded-xl focus:ring-2 focus:ring-orange-400 text-sm font-bold" 
-                    value={formData.choice2Event} onChange={e => setFormData({...formData, choice2Event: e.target.value})} />
-                  <div className="flex gap-2">
-                    <input type="date" required className="flex-1 bg-white/5 border-none p-4 rounded-xl text-xs font-bold" 
-                      value={formData.choice2Date} onChange={e => setFormData({...formData, choice2Date: e.target.value})} />
-                    <input type="time" required className="flex-1 bg-white/5 border-none p-4 rounded-xl text-xs font-bold" 
-                      value={formData.choice2Time} onChange={e => setFormData({...formData, choice2Time: e.target.value})} />
-                  </div>
-                </div>
-              </div>
-
-              {error && (
-                <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="bg-red-500/10 text-red-500 p-4 rounded-2xl flex items-center gap-3 border border-red-500/20 text-xs font-black uppercase tracking-tighter">
-                  <AlertTriangle size={18} /> {error}
-                </motion.div>
-              )}
-
-              <motion.button 
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                disabled={isSaving}
-                className="w-full bg-yellow-400 text-maroon-900 py-6 rounded-2xl font-black uppercase tracking-[0.2em] shadow-[0_20px_40px_rgba(250,204,21,0.2)] disabled:opacity-50 text-xs"
-              >
-                {isSaving ? 'Processing...' : 'Reserve my Spot'}
-              </motion.button>
-            </motion.form>
-
-            {/* SCHEDULE SECTION */}
-            <section className="pt-20">
-              <div className="flex justify-between items-end mb-10 px-2">
-                <div>
-                  <h3 className="text-4xl font-black tracking-tighter italic leading-none">THE <br/>SQUAD.</h3>
-                  <p className="text-slate-600 text-[9px] font-black uppercase tracking-[0.3em] mt-2">Live Calendar</p>
-                </div>
-                <div className="bg-white/5 px-4 py-2 rounded-xl border border-white/10 flex items-center gap-2 text-[10px] font-black">
-                  <Users size={14} className="text-yellow-400" /> {appointments.length} SENIORS
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                {appointments.map((app, i) => (
-                  <motion.div 
-                    key={i}
-                    initial={{ opacity: 0, x: -20 }}
-                    whileInView={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.05 }}
-                    viewport={{ once: true }}
-                    className="bg-white/5 p-5 rounded-[2rem] border border-white/5 flex items-center justify-between group"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-white/10 text-white rounded-2xl flex items-center justify-center font-black text-xl border border-white/10 shadow-xl group-hover:bg-yellow-400 group-hover:text-maroon-900 transition-colors">
-                        {app.name.charAt(0)}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {appointments.map((app, i) => (
+                    <div key={i} className="bg-slate-900 border-2 border-white/10 rounded-[2rem] p-6 space-y-5 shadow-2xl relative">
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="max-w-[80%]">
+                          <h3 className="font-black text-xl uppercase text-[#FFCC00] tracking-tighter truncate leading-none">{app.name}</h3>
+                          <p className="text-white text-[10px] font-black flex items-center gap-2 uppercase tracking-widest bg-white/5 p-2 rounded-lg mt-3 truncate border border-white/5"><Mail size={12} className="text-[#FFCC00]"/> {app.contact}</p>
+                        </div>
+                        <button onClick={() => setDeleteId(app.id)} className="p-3 bg-red-600/20 text-red-500 rounded-2xl active:bg-red-600 active:text-white transition-all"><Trash2 size={18} /></button>
                       </div>
-                      <div>
-                        <h4 className="font-black text-sm uppercase tracking-tight">{app.name}</h4>
-                        <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">{app.choice1Event}</p>
+                      <div className="grid grid-cols-1 gap-3">
+                        <div className="bg-green-600/10 p-4 rounded-3xl border border-green-500/30 flex justify-between items-center text-white overflow-hidden">
+                          <div className="truncate">
+                            <p className="text-green-500 font-black text-[9px] uppercase tracking-widest leading-none mb-1">Choice 1</p>
+                            <p className="font-black text-sm truncate">{app.choice1Event}</p>
+                            <p className="text-slate-400 text-[10px] font-bold mt-1 uppercase italic">{app.choice1Date} @ {app.choice1Time}</p>
+                          </div>
+                          <a href={generateCalLink(app, 1)} target="_blank" rel="noreferrer" className="bg-green-600 p-2.5 rounded-xl text-white shrink-0 ml-2 shadow-lg active:scale-90 transition-transform"><PlusCircle size={20} /></a>
+                        </div>
+                        <div className="bg-orange-600/10 p-4 rounded-3xl border border-orange-500/30 flex justify-between items-center opacity-80 text-white overflow-hidden">
+                          <div className="truncate">
+                            <p className="text-orange-500 font-black text-[9px] uppercase tracking-widest leading-none mb-1">Choice 2</p>
+                            <p className="font-black text-sm truncate">{app.choice2Event}</p>
+                            <p className="text-slate-400 text-[10px] font-bold mt-1 uppercase italic">{app.choice2Date} @ {app.choice2Time}</p>
+                          </div>
+                          <a href={generateCalLink(app, 2)} target="_blank" rel="noreferrer" className="bg-orange-600 p-2.5 rounded-xl text-white shrink-0 ml-2 shadow-lg active:scale-90 transition-transform"><PlusCircle size={20} /></a>
+                        </div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-xs font-black text-yellow-400">{app.choice1Date.split('-').slice(1).join('/')}</p>
-                      <p className="text-[9px] text-slate-600 font-bold uppercase">{app.choice1Time}</p>
-                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              /* --- SENIOR VIEW (Two Column Responsive) --- */
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 md:gap-16 items-start">
+                
+                {/* LEFT: Instructions & Form */}
+                <div className="lg:col-span-7 space-y-10">
+                  <motion.div className="bg-[#800000]/30 border-4 border-[#800000] rounded-[2.5rem] shadow-2xl overflow-hidden">
+                    <button onClick={() => setIsMsgExpanded(!isMsgExpanded)} className="w-full p-6 md:p-8 flex items-center justify-between text-[#FFCC00] active:bg-[#800000]/20 transition-colors text-left">
+                      <div className="flex items-center gap-4">
+                        <Sparkles size={24} />
+                        <h3 className="font-black uppercase tracking-widest text-lg leading-tight">Project Mission</h3>
+                      </div>
+                      <motion.div animate={{ rotate: isMsgExpanded ? 180 : 0 }} transition={{ duration: 0.3 }}><ChevronDown size={24} /></motion.div>
+                    </button>
+                    <AnimatePresence>
+                      {isMsgExpanded && (
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.4 }} className="px-8 pb-8 text-slate-100 text-sm leading-relaxed font-bold italic border-t border-[#800000]/30 pt-6 space-y-4">
+                          <p>"Hey Seniors! Below is a list of questions that will help me schedule your lens signing appointment. You will have to put two possible events (including sports events, plays, shows, assemblies, or even just at lunch!) that you would want me to attend, as I might not be able to attend the first one, so put them in order as to which you want me to attend more."</p>
+                          <p>"Please make sure that you look at your schedule, whether that be your sports schedule, your theater performance schedule, etc., before you fill out the form. If you need to change your appointment, you can come back to the form to make changes. And this appointment can be scheduled any day of this year, including in the spring semester. 
+I hope you guys enjoy this project! Let me know if you have any questions."</p>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </motion.div>
-                ))}
-              </div>
-            </section>
 
-            <footer className="pt-20 pb-10 text-center border-t border-white/5">
-               <button onClick={() => signOut(auth)} className="text-slate-700 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 mx-auto hover:text-white transition-colors">
-                 <LogOut size={14}/> Sign Out
-               </button>
+                  <form onSubmit={handleSubmit} className="space-y-8 bg-slate-900/50 p-6 md:p-10 rounded-[3rem] border border-white/5 shadow-2xl">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-[0.3em] text-[#FFCC00] ml-2">Full Name</label>
+                        <input type="text" placeholder="Michaela Post" required className="w-full bg-slate-900 border-2 border-white/10 p-5 rounded-2xl focus:border-[#FFCC00] transition-all font-black text-white outline-none shadow-xl" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-[0.3em] text-[#FFCC00] ml-2">Phone or Email</label>
+                        <input type="text" placeholder="Contact Info" required className="w-full bg-slate-900 border-2 border-white/10 p-5 rounded-2xl focus:border-[#FFCC00] transition-all font-black text-white outline-none shadow-xl" value={formData.contact} onChange={e => setFormData({...formData, contact: e.target.value})} />
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center px-3 text-[10px] font-black uppercase tracking-[0.3em]">
+                        <label className="text-green-500">Choice #1 (Primary)</label>
+                        <span className="bg-green-500 text-black px-2 py-0.5 rounded font-black">Limit: 6</span>
+                      </div>
+                      <div className="bg-slate-950 border-2 border-white/10 p-6 md:p-8 rounded-[2.5rem] space-y-4 shadow-2xl">
+                        <input type="text" placeholder="Event Name" required className="w-full bg-slate-900 border-2 border-white/10 p-4 rounded-xl focus:border-green-400 font-bold outline-none text-white placeholder:text-slate-800" value={formData.choice1Event} onChange={e => setFormData({...formData, choice1Event: e.target.value})} />
+                        {/* INPUT STACKING FIX FOR MOBILE */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <input type="date" required style={{ colorScheme: 'dark' }} className="w-full bg-slate-900 border-2 border-white/10 p-4 rounded-xl text-xs font-black text-white focus:border-green-400 outline-none" value={formData.choice1Date} onChange={e => setFormData({...formData, choice1Date: e.target.value})} />
+                          <input type="time" required style={{ colorScheme: 'dark' }} className="w-full bg-slate-900 border-2 border-white/10 p-4 rounded-xl text-xs font-black text-white focus:border-green-400 outline-none" value={formData.choice1Time} onChange={e => setFormData({...formData, choice1Time: e.target.value})} />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4 opacity-70">
+                      <label className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-400 ml-3 uppercase">Choice #2 (Backup)</label>
+                      <div className="bg-slate-950 border-2 border-white/10 p-6 md:p-8 rounded-[2.5rem] space-y-4 shadow-2xl italic">
+                        <input type="text" placeholder="Second Choice Event" required className="w-full bg-slate-900 border-2 border-white/10 p-4 rounded-xl focus:border-orange-400 font-bold outline-none text-white placeholder:text-slate-800" value={formData.choice2Event} onChange={e => setFormData({...formData, choice2Event: e.target.value})} />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <input type="date" required style={{ colorScheme: 'dark' }} className="w-full bg-slate-900 border-2 border-white/10 p-4 rounded-xl text-xs font-black text-white focus:border-orange-400 outline-none" value={formData.choice2Date} onChange={e => setFormData({...formData, choice2Date: e.target.value})} />
+                          <input type="time" required style={{ colorScheme: 'dark' }} className="w-full bg-slate-900 border-2 border-white/10 p-4 rounded-xl text-xs font-black text-white focus:border-orange-400 outline-none" value={formData.choice2Time} onChange={e => setFormData({...formData, choice2Time: e.target.value})} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {error && <div className="bg-red-600 text-white p-4 rounded-2xl flex items-center gap-3 font-black text-xs uppercase animate-bounce"><AlertTriangle size={18} /> {error}</div>}
+
+                    <button type="submit" disabled={isSaving} className="w-full bg-[#FFCC00] text-[#800000] py-6 rounded-3xl font-black uppercase tracking-[0.2em] shadow-[0_10px_30px_rgba(255,204,0,0.5)] disabled:opacity-50 text-sm active:scale-95 transition-all">
+                      {isSaving ? 'Processing...' : 'Reserve My Spot'}
+                    </button>
+                  </form>
+                </div>
+
+                {/* RIGHT: Calendar Sync & Squad List */}
+                <div className="lg:col-span-5 space-y-10 lg:sticky lg:top-8">
+                  {formData.choice1Event && (
+                    <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="bg-[#FFCC00] p-6 md:p-8 rounded-[3rem] text-[#800000] shadow-2xl border-4 border-[#800000]">
+                      <div className="flex items-center gap-4 mb-6 text-[#800000]">
+                        <div className="bg-[#800000] text-[#FFCC00] p-3 rounded-full shadow-lg"><CheckCircle2 size={24} /></div>
+                        <h3 className="font-black uppercase tracking-tighter text-2xl leading-none italic">You're Set!</h3>
+                      </div>
+                      <div className="space-y-3">
+                        <a href={generateCalLink(formData, 1)} target="_blank" rel="noreferrer" className="w-full bg-[#800000] text-white py-5 rounded-2xl flex items-center justify-center gap-3 text-xs font-black uppercase tracking-widest active:scale-95 transition-all shadow-xl"><Calendar size={18}/> Add to Google</a>
+                        <a href={getIcsLink(formData)} download="signing.ics" className="w-full bg-white text-[#800000] py-5 rounded-2xl flex items-center justify-center gap-3 text-xs font-black uppercase tracking-widest active:scale-95 transition-all shadow-xl border-4 border-[#800000]"><SmartphoneIcon size={18}/> Add to Apple</a>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  <section className="space-y-8">
+                    <div className="flex justify-between items-end border-b border-white/10 pb-4 px-2">
+                      <h3 className="text-4xl font-black italic uppercase text-[#FFCC00] tracking-tighter leading-none">The Squad.</h3>
+                      <div className="bg-[#FFCC00] text-[#800000] px-3 py-1 rounded-full font-black text-[10px]">
+                         {appointments.length} Seniors
+                      </div>
+                    </div>
+                    <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 scrollbar-hide">
+                      {appointments.map((app, i) => (
+                        <div key={i} className="bg-slate-900 p-5 rounded-[2rem] border-2 border-white/10 flex items-center justify-between shadow-xl overflow-hidden">
+                          <div className="flex items-center gap-4 truncate">
+                            <div className="w-12 h-12 bg-[#FFCC00] text-[#800000] rounded-2xl flex items-center justify-center font-black text-xl shadow-lg border border-[#800000]/10 shrink-0">{app.name.charAt(0)}</div>
+                            <div className="truncate">
+                              <h4 className="font-black text-sm uppercase text-white tracking-tight leading-none truncate">{app.name}</h4>
+                              <p className="text-[10px] text-[#FFCC00] font-black uppercase tracking-widest mt-1 opacity-70 italic truncate">{app.choice1Event}</p>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0 ml-4">
+                            <p className="text-sm font-black text-[#FFCC00] uppercase leading-none">{app.choice1Date.split('-').slice(1).join('/')}</p>
+                            <p className="text-[10px] text-white font-black mt-1 opacity-40 italic tracking-tighter">{app.choice1Time}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                </div>
+
+              </div>
+            )}
+
+            <footer className="pt-20 pb-10 text-center space-y-6 border-t border-white/5">
+              <div className="space-y-1">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#FFCC00]">Produced & Photographed By</p>
+                <p className="text-sm font-black italic text-white uppercase tracking-tighter">{PROJECT_LEAD} • Salpointe Catholic</p>
+              </div>
+              <button onClick={handleLogout} className="bg-white/10 text-white px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-3 mx-auto border border-white/10 hover:bg-red-600 transition-all shadow-xl">
+                <LogOut size={16}/> Sign Out
+              </button>
             </footer>
 
           </motion.main>
+        )}
+      </AnimatePresence>
+
+      {/* DELETE MODAL */}
+      <AnimatePresence>
+        {deleteId && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center px-6">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setDeleteId(null)} className="absolute inset-0 bg-black/90 backdrop-blur-md" />
+            <motion.div initial={{ scale: 0.8, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.8, opacity: 0, y: 20 }} className="relative bg-slate-900 border-4 border-red-600 p-8 rounded-[2.5rem] shadow-2xl max-w-sm w-full text-center text-white">
+              <div className="w-16 h-16 bg-red-600/20 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6"><AlertTriangle size={32} /></div>
+              <h2 className="text-2xl font-black italic uppercase mb-2">Delete?</h2>
+              <p className="text-slate-400 text-[10px] font-bold leading-relaxed mb-8 uppercase tracking-widest">Permanent removal of senior booking.</p>
+              <div className="grid grid-cols-2 gap-4">
+                <button onClick={() => setDeleteId(null)} className="py-4 rounded-2xl bg-white/10 text-white text-xs font-black uppercase tracking-widest">Cancel</button>
+                <button onClick={handleDelete} className="py-4 rounded-2xl bg-red-600 text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform">Delete</button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>
