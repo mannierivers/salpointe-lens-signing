@@ -147,13 +147,7 @@ export default function App() {
     }
   };
 
-  const handleLogin = () => {
-    const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: 'select_account' });
-    signInWithRedirect(auth, provider);
-  };
-
-  // --- RESTORED LOGOUT FUNCTION ---
+  const handleLogin = () => signInWithRedirect(auth, new GoogleAuthProvider());
   const handleLogout = () => signOut(auth);
 
   const handleDelete = async () => {
@@ -198,17 +192,14 @@ export default function App() {
              <img src="/sc-logo.png" alt="Salpointe Logo" className="w-20 h-20 md:w-28 md:h-28 object-contain drop-shadow-2xl" />
           </motion.div>
           <h1 className="text-5xl md:text-7xl font-black italic tracking-tighter uppercase leading-[0.85] text-white">Sign The <br/><span className="text-[#FFCC00] not-italic font-bold">Lens.</span></h1>
-          
           <div className="mt-4 bg-[#FFCC00] text-[#800000] px-4 py-1.5 rounded-full font-black text-[9px] md:text-xs uppercase tracking-widest shadow-lg flex items-center gap-2 border border-[#800000]/20">
             <CameraIcon size={12} /> {PROJECT_LEAD} | {LEAD_TITLE}
           </div>
-
           {!user && (
-            <button onClick={handleLogin} className="mt-12 bg-[#FFCC00] text-[#800000] px-8 py-4 md:px-10 md:py-5 rounded-2xl font-black uppercase tracking-widest text-xs md:text-sm active:scale-95 transition-all shadow-[0_0_30px_rgba(255,204,0,0.5)]">
+            <button onClick={handleLogin} className="mt-12 bg-[#FFCC00] text-[#800000] px-10 py-5 rounded-2xl font-black uppercase tracking-widest text-xs md:text-sm active:scale-95 transition-all shadow-[0_0_30px_rgba(255,204,0,0.5)]">
               Sign in with Google
             </button>
           )}
-
           {isAdmin && (
             <button onClick={() => setView(view === 'admin' ? 'form' : 'admin')} className="mt-6 flex items-center gap-2 bg-[#FFCC00] text-[#800000] px-6 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest border-2 border-[#800000] shadow-lg active:scale-95 transition-transform">
               <ShieldCheck size={16} /> {view === 'admin' ? 'Exit Admin' : 'Admin Dashboard'}
@@ -233,7 +224,7 @@ export default function App() {
                     <div key={app.id || i} className="bg-slate-900 border-2 border-white/10 rounded-3xl p-6 space-y-4 shadow-2xl relative">
                       <div className="flex justify-between items-start">
                         <div className="max-w-[75%]">
-                          <h3 className="font-black text-xl uppercase text-[#FFCC00] truncate leading-none">{(app?.firstName || app?.name || "Senior")} {app?.lastName || ""}</h3>
+                          <h3 className="font-black text-xl uppercase text-[#FFCC00] truncate leading-none">{(app?.firstName || "Senior")} {app?.lastName || ""}</h3>
                           <p className="text-white text-[10px] font-black uppercase tracking-widest bg-white/5 p-2 rounded-lg mt-3 truncate border border-white/5"><Mail size={12} className="text-[#FFCC00]"/> {app?.contact || "No contact"}</p>
                         </div>
                         <button onClick={() => setDeleteId(app.id)} className="p-3 bg-red-600/20 text-red-500 rounded-xl active:bg-red-600 active:text-white transition-all"><Trash2 size={18} /></button>
@@ -253,7 +244,7 @@ export default function App() {
                             <p className="font-black text-sm truncate">{app?.choice2Event || "None"}</p>
                             <p className="text-slate-400 text-[10px] font-bold uppercase mt-1">{app?.choice2Date || "TBD"} @ {formatToStandardTime(app?.choice2Time)}</p>
                           </div>
-                          <a href={generateCalLink(app, 2)} target="_blank" rel="noreferrer" className="bg-orange-600 p-3 rounded-2xl text-white shrink-0 ml-2 shadow-lg active:scale-90 transition-transform"><PlusCircle size={20} /></a>
+                          <a href={generateCalLink(app, 2)} target="_blank" rel="noreferrer" className="bg-orange-600 p-3 rounded-2xl text-white shadow-lg active:scale-90 transition-transform"><PlusCircle size={20} /></a>
                         </div>
                       </div>
                     </div>
@@ -277,15 +268,9 @@ export default function App() {
                     <AnimatePresence>
                       {isMsgExpanded && (
                         <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.4 }} className="px-8 md:px-10 pb-10 text-slate-100 text-sm md:text-base leading-relaxed font-bold italic border-t border-[#800000]/30 pt-6 space-y-5">
-                          <p>
-                            "Hey Seniors! I’m Michaela Post '26, and I’m so excited to be the head photographer for this year’s Senior Sign-Out project. The goal of this project is to capture that iconic moment when you sign the camera lens, marking a major milestone in your senior year."
-                          </p>
-                          <p>
-                            "To make this happen, I need you to suggest two possible events where I can meet you—this could be a sports game, a theater performance, a club assembly, or even just during lunch! Please list them in order of preference, as I’ll do my best to make the first one, but having a backup helps ensure we don't miss the shot."
-                          </p>
-                          <p>
-                            "Before you sign up, please double-check your own schedule. If you have any questions, please reach out to me via my school email at <span className="text-[#FFCC00] underline">{LEAD_EMAIL}</span>. I can’t wait to see you all out there!"
-                          </p>
+                          <p>"Hey Seniors! I’m Michaela Post '26, and I’m so excited to be the head photographer for this year’s Senior Sign-Out project. The goal of this project is to capture that iconic moment when you sign the camera lens, marking a major milestone in your senior year."</p>
+                          <p>"To make this happen, I need you to suggest two possible events where I can meet you—this could be a sports game, a theater performance, a club assembly, or even just during lunch! Please list them in order of preference."</p>
+                          <p>"Before you sign up, please double-check your own schedule. If you have any questions, please reach out to me via my school email at <span className="text-[#FFCC00] underline">{LEAD_EMAIL}</span>. I can’t wait to see you all out there!"</p>
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -310,7 +295,7 @@ export default function App() {
                     <div className="space-y-4">
                       <div className="flex justify-between items-center px-3 text-[10px] font-black uppercase tracking-[0.3em]">
                         <label className="text-green-500">Choice #1 (Primary) *</label>
-                        <span className="bg-green-500 text-black px-2 py-0.5 rounded font-black">Limit: 6</span>
+                        <span className="bg-green-500 text-black px-2 py-0.5 rounded font-black">6 people per event</span>
                       </div>
                       <div className="bg-slate-950 border-2 border-white/10 p-6 md:p-8 rounded-[2.5rem] space-y-4 shadow-2xl">
                         <select required className="w-full bg-slate-900 border-2 border-white/10 p-4 rounded-xl focus:border-green-400 font-bold text-white outline-none appearance-none" 
@@ -360,13 +345,13 @@ export default function App() {
                   </form>
                 </div>
 
-                {/* RIGHT: Sync & Squad */}
-                <div className="lg:col-span-5 space-y-10 order-1 lg:order-2 lg:sticky lg:top-8">
+                {/* RIGHT: Calendar Sync & Squad List */}
+                <div className="lg:col-span-5 space-y-10 order-1 lg:order-2">
                    {formData.choice1Event && (
-                    <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="bg-[#FFCC00] p-6 md:p-8 rounded-[3rem] text-[#800000] shadow-2xl border-4 border-[#800000] z-30">
+                    <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="bg-[#FFCC00] p-6 md:p-8 rounded-[3rem] text-[#800000] shadow-2xl border-4 border-[#800000] sticky top-8 z-30">
                       <div className="flex items-center gap-4 mb-6">
                         <div className="bg-[#800000] text-[#FFCC00] p-3 rounded-full shadow-lg"><CheckCircle2 size={24} /></div>
-                        <h3 className="font-black uppercase tracking-tighter text-2xl leading-none italic">You're Set!</h3>
+                        <h3 className="font-black uppercase tracking-tighter text-2xl leading-none italic text-[#800000]">You're Set!</h3>
                       </div>
                       <div className="space-y-3">
                         <a href={generateCalLink(formData, 1)} target="_blank" rel="noreferrer" className="w-full bg-[#800000] text-white py-4 rounded-2xl flex items-center justify-center gap-3 text-xs font-black uppercase tracking-widest active:scale-95 transition-all shadow-xl"><Calendar size={18}/> Google Calendar</a>
@@ -378,11 +363,13 @@ export default function App() {
                   <section className="space-y-8">
                     <div className="flex justify-between items-end border-b border-white/10 pb-4 px-2">
                       <h3 className="text-4xl font-black italic uppercase text-[#FFCC00] tracking-tighter leading-none">The Squad.</h3>
-                      <div className="bg-[#FFCC00] text-[#800000] px-3 py-1 rounded-full font-black text-[10px]">{appointments.length} Seniors</div>
+                      <div className="bg-[#FFCC00] text-[#800000] px-3 py-1 rounded-full font-black text-[10px]">
+                         {appointments.length} Seniors
+                      </div>
                     </div>
                     <div className="space-y-4 max-h-[600px] overflow-y-auto pr-1 scrollbar-hide">
                       {appointments.map((app, i) => (
-                        <div key={app.id || i} className="bg-slate-900 p-5 rounded-[2rem] border-2 border-white/10 flex items-center justify-between shadow-xl overflow-hidden">
+                        <div key={app.id || i} className="bg-slate-900 p-4 md:p-5 rounded-[2rem] border-2 border-white/10 flex items-center justify-between shadow-xl overflow-hidden">
                           <div className="flex items-center gap-4 truncate">
                             <div className="w-12 h-12 bg-[#FFCC00] text-[#800000] rounded-2xl flex items-center justify-center font-black text-xl shadow-lg border border-[#800000]/10 shrink-0">{(app?.firstName || "S").charAt(0)}</div>
                             <div className="truncate">
@@ -399,17 +386,21 @@ export default function App() {
                     </div>
                   </section>
                 </div>
+
               </div>
             )}
 
-            <footer className="pt-20 pb-10 text-center space-y-6 border-t border-white/5 pt-10">
+            <footer className="pt-20 pb-10 text-center space-y-8 border-t border-white/5">
               <div className="space-y-1 text-white">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#FFCC00]">Produced & Photographed By</p>
-                <p className="text-sm font-black italic uppercase tracking-tighter">{PROJECT_LEAD} • Salpointe Catholic</p>
+                <p className="text-sm font-black italic uppercase tracking-tighter">{PROJECT_LEAD} • Salpointe Catholic High School</p>
               </div>
-              <button onClick={handleLogout} className="bg-white/10 text-white px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-3 mx-auto border border-white/10 hover:bg-red-600 transition-all shadow-xl">
-                <LogOut size={16}/> Sign Out
-              </button>
+              <div className="flex flex-col items-center gap-4">
+                <button onClick={handleLogout} className="bg-white/10 text-white px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-3 mx-auto border border-white/10 hover:bg-red-600 transition-all shadow-xl">
+                  <LogOut size={16}/> Sign Out
+                </button>
+                <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-700">built by Jet Noir Systems, LLC</p>
+              </div>
             </footer>
 
           </motion.main>
@@ -424,7 +415,7 @@ export default function App() {
             <motion.div initial={{ scale: 0.8, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.8, opacity: 0, y: 20 }} className="relative bg-slate-900 border-4 border-red-600 p-8 rounded-[2.5rem] shadow-2xl max-w-sm w-full text-center text-white">
               <div className="w-16 h-16 bg-red-600/20 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6"><AlertTriangle size={32} /></div>
               <h2 className="text-2xl font-black italic uppercase mb-2">Delete?</h2>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4 mt-6">
                 <button onClick={() => setDeleteId(null)} className="py-4 rounded-2xl bg-white/10 text-white text-xs font-black uppercase tracking-widest">Cancel</button>
                 <button onClick={handleDelete} className="py-4 rounded-2xl bg-red-600 text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform shadow-lg shadow-red-600/40">Delete</button>
               </div>
