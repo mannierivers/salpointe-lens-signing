@@ -440,7 +440,12 @@ const handleBulkAdd = async () => {
                 <button onClick={handleLogout} className="bg-white/10 text-white px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-3 mx-auto border border-white/10 hover:bg-red-600 transition-all shadow-xl">
                   <LogOut size={16}/> Sign Out
                 </button>
-                <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-700">built by Jet Noir Systems, LLC</p>
+                  <a href="https://jetnoir.systems" target="_blank" rel="noreferrer" className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-700 hover:text-[#FFCC00] transition-colors">
+                    built by Jet Noir Systems, LLC
+                  </a>
+                  <a href="https://mannierivers.dev" target="_blank" rel="author noopener noreferrer" className="ml-3 text-[9px] font-bold uppercase tracking-[0.2em] text-slate-700 hover:text-[#FFCC00] transition-colors">
+                    from Mannie Rivers
+                  </a>
               </div>
             </footer>
 
